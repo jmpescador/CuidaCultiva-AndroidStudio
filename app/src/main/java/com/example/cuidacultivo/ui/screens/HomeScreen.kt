@@ -5,8 +5,8 @@ package com.example.cuidacultivo.ui.screens
 import android.Manifest
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.view.Surface
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,7 +43,6 @@ import com.example.cuidacultivo.utils.uriToBitmap
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
-import android.os.Handler
 
 @Composable
 fun HomeScreen(navController: NavHostController) {
@@ -53,21 +52,17 @@ fun HomeScreen(navController: NavHostController) {
 
     // --- PERMISO DE CÁMARA ---
     var tienePermiso by remember { mutableStateOf(false) }
-
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> tienePermiso = granted }
 
-    LaunchedEffect(Unit) {
-        permissionLauncher.launch(Manifest.permission.CAMERA)
-    }
+    LaunchedEffect(Unit) { permissionLauncher.launch(Manifest.permission.CAMERA) }
 
     // --- ESTADOS ---
     var switchState by remember { mutableStateOf(false) }
     var isFocused by remember { mutableStateOf(false) }
     var flashEnabled by remember { mutableStateOf(false) }
     var pulseEffect by remember { mutableStateOf(false) }
-    val mainHandler = Handler(Looper.getMainLooper())
 
     // --- ImageCapture ---
     val imageCapture = remember {
@@ -76,15 +71,11 @@ fun HomeScreen(navController: NavHostController) {
             .build()
     }
 
+    // --- Convertir a ARGB8888 ---
     fun convertToARGB8888(bitmap: Bitmap): Bitmap {
         return try {
-            if (!bitmap.isMutable) {
-                bitmap.copy(Bitmap.Config.ARGB_8888, true)
-            } else {
-                bitmap
-            }
+            if (!bitmap.isMutable) bitmap.copy(Bitmap.Config.ARGB_8888, true) else bitmap
         } catch (e: Exception) {
-            // Fallback para Android <26
             val converted = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
             val canvas = android.graphics.Canvas(converted)
             canvas.drawBitmap(bitmap, 0f, 0f, null)
@@ -96,15 +87,23 @@ fun HomeScreen(navController: NavHostController) {
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        if (uri != null) {
-            val bitmap = uriToBitmap(context, uri)
-            if (bitmap != null) {
-                val safeBitmap = convertToARGB8888(bitmap) // <-- importante
-                val result = runModel(context, safeBitmap)
-                navController.navigate("result/$result")
+        uri?.let {
+            val bitmap = uriToBitmap(context, it)
+            bitmap?.let { bmp ->
+                val safeBitmap = convertToARGB8888(bmp)
+                val jsonString = runModel(context, safeBitmap)
+
+                Handler(Looper.getMainLooper()).post {
+                    navController.currentBackStackEntry?.savedStateHandle?.set(
+                        "plagaInfo",
+                        jsonString
+                    )
+                    navController.navigate("result")
+                }
             }
         }
     }
+
 
     // --- ANIMACIONES ---
     val scale by animateFloatAsState(if (isFocused) 4f else 1f, tween(600))
@@ -115,7 +114,6 @@ fun HomeScreen(navController: NavHostController) {
 
     // --- FUNCIÓN TOMAR FOTO Y PREDECIR ---
     fun takePhotoAndPredict() {
-
         if (!isFocused) {
             pulseEffect = true
             scope.launch {
@@ -131,16 +129,16 @@ fun HomeScreen(navController: NavHostController) {
             imageCapture = imageCapture,
             executor = executor,
             onImageCaptured = { bitmap ->
+                val safeBitmap = convertToARGB8888(bitmap)
+                val jsonString = runModel(context, safeBitmap)
 
-                Log.e("CAMERA", "Bitmap capturado: ${bitmap.width}x${bitmap.height}")
-
-                val result = runModel(context, bitmap)
-
-                // NAVEGAR A RESULTSCREEN
                 Handler(Looper.getMainLooper()).post {
-                    navController.navigate("result/$result")
+                    navController.currentBackStackEntry?.savedStateHandle?.set(
+                        "plagaInfo",
+                        jsonString
+                    )
+                    navController.navigate("result")
                 }
-
             },
             context = context
         )
@@ -150,7 +148,6 @@ fun HomeScreen(navController: NavHostController) {
     // --- UI ---
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // GRADIENT TOP
         GradientBlock(
             switchState = switchState,
             height = 180,
@@ -158,7 +155,6 @@ fun HomeScreen(navController: NavHostController) {
             modifier = Modifier.align(Alignment.TopCenter).zIndex(2f)
         )
 
-        // CAMARA PREVIEW
         if (tienePermiso) {
             CameraPreview(
                 enableFlash = flashEnabled,
@@ -173,17 +169,13 @@ fun HomeScreen(navController: NavHostController) {
             Box(
                 Modifier.fillMaxSize().background(Color.Gray),
                 contentAlignment = Alignment.Center
-            ) {
-                Text("Permiso de cámara requerido")
-            }
+            ) { Text("Permiso de cámara requerido") }
         }
 
-        // OVERLAY OSCURO
         Box(
             Modifier.fillMaxSize().background(Color.Black.copy(alpha = overlayAlpha)).zIndex(2f)
         )
 
-        // CONTENIDO
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
@@ -199,12 +191,13 @@ fun HomeScreen(navController: NavHostController) {
                 ButtonSearchSection(
                     onGalleryClick = { galleryLauncher.launch("image/*") },
                     onCameraClick = { takePhotoAndPredict() },
-                    onSearchClick = {}
+                    onSearchClick = {
+                        navController.navigate("buscarPlaga")
+                    }
                 )
             },
             modifier = Modifier.zIndex(3f)
         ) { padding ->
-
             Column(
                 Modifier
                     .fillMaxSize()
@@ -212,7 +205,6 @@ fun HomeScreen(navController: NavHostController) {
                     .padding(horizontal = 25.dp, vertical = 90.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-
                 AnimatedVisibility(!isFocused) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("¡Hola!", color = Color.White, fontSize = 22.sp)
@@ -227,7 +219,6 @@ fun HomeScreen(navController: NavHostController) {
             }
         }
 
-        // ZONA DE ENFOQUE
         Box(
             Modifier.fillMaxSize().zIndex(4f)
         ) {
@@ -248,7 +239,6 @@ fun HomeScreen(navController: NavHostController) {
             }
         }
 
-        // GRADIENT BOTTOM
         GradientBlock(
             switchState = switchState,
             height = 180,
