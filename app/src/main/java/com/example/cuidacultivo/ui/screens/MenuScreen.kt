@@ -59,7 +59,7 @@ fun MenuScreen(navController: NavController) {
             }
 
             MenuButton("Consultar plagas", R.drawable.ic_bug) {
-                navController.navigate("plagas")
+                navController.navigate("wikiPlagas")
             }
 
             MenuButton("Agregar cultivo", R.drawable.ic_add_cultivo) {

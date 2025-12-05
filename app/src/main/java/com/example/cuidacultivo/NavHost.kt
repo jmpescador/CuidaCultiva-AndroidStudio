@@ -9,6 +9,7 @@ import com.example.cuidacultivo.ui.screens.BuscarPlagaScreen
 import com.example.cuidacultivo.ui.screens.EditarUsuarioScreen
 import com.example.cuidacultivo.ui.screens.HomeScreen
 import com.example.cuidacultivo.ui.screens.MenuScreen
+import com.example.cuidacultivo.ui.screens.WikiPlagasScreen
 import com.example.tuapp.ui.screens.ResultScreen
 
 // Definimos las rutas como constantes
@@ -18,6 +19,8 @@ object Routes {
     const val EDITAR_USUARIO = "editarUsuario"
     const val RESULT = "result"
     const val BUSCAR_PLAGA = "buscarPlaga"
+
+    const val WIKI_PLAGAS = "wikiPlagas"
 }
 
 @Composable
@@ -63,6 +66,11 @@ fun AppNavigation(navController: NavHostController) {
         // Pantalla de búsqueda de plaga
         composable(Routes.BUSCAR_PLAGA) {
             BuscarPlagaScreen(navController = navController)
+        }
+
+        // Pantalla de búsqueda de plaga
+        composable(Routes.WIKI_PLAGAS) {
+            WikiPlagasScreen(navController = navController)
         }
     }
 }

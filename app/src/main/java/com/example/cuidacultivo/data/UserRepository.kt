@@ -32,7 +32,7 @@ class UserRepository(context: Context) {
     // ⭐ ENVIAR AL BACKEND (CREAR)
     // ============================================================
     suspend fun enviarAlBackend(usuario: Usuario): Usuario? {
-        Log.d("REPO", "🌐 enviarAlBackend() → Enviando usuario al backend: $usuario")
+        Log.d("REPO", " enviarAlBackend() → Enviando usuario al backend: $usuario")
 
         return try {
             val response = ApiClient.service.crearUsuario(usuario)
@@ -63,9 +63,9 @@ class UserRepository(context: Context) {
 
         return try {
             val response = ApiClient.service.actualizarUsuarioPorCedula(usuario.cedula, usuario)
-            Log.d("REPO", "🌍 Response code: ${response.code()}")
-            Log.d("REPO", "🌍 Response body: ${response.body()}")
-            Log.d("REPO", "🌍 Response error: ${response.errorBody()?.string() ?: "No hay error"}")
+            Log.d("REPO", " Response code: ${response.code()}")
+            Log.d("REPO", " Response body: ${response.body()}")
+            Log.d("REPO", " Response error: ${response.errorBody()?.string() ?: "No hay error"}")
 
             if (response.isSuccessful) {
                 Log.d("REPO", "✔ Usuario actualizado exitosamente en backend")
