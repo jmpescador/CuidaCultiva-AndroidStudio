@@ -1,37 +1,44 @@
 package com.example.cuidacultivo.ui.screens
+
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.GenericShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.example.cuidacultivo.tflite.runModelText // función que crearemos para procesar texto
-import android.os.Handler
-import android.os.Looper
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.shape.GenericShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import com.example.cuidacultivo.R
-import kotlin.collections.set
+import com.example.cuidacultivo.data.PlagaInfo
+import com.example.cuidacultivo.data.plagasMap
+
+// -----------------------------------------------------------
+// BUSCAR PLAGA SCREEN
+// -----------------------------------------------------------
 
 @Composable
 fun BuscarPlagaScreen(
     navController: NavController,
-    showBackButton: Boolean = true, // <-- Nuevo parámetro
+    showBackButton: Boolean = true,
 ) {
-    var inputText by remember { mutableStateOf(TextFieldValue("")) }
-    var isLoading by remember { mutableStateOf(false) }
+    var search by remember { mutableStateOf("") }
 
     val bottomMoonShape = GenericShape { size, _ ->
         moveTo(0f, 0f)
@@ -43,7 +50,6 @@ fun BuscarPlagaScreen(
             size.width * 0.25f, size.height * 0.75f,
             0f, size.height * 0.40f
         )
-
         close()
     }
 
@@ -53,7 +59,7 @@ fun BuscarPlagaScreen(
             .background(Color.White)
     ) {
 
-        // Header recortado en media luna hacia abajo
+        // ------------------ HEADER ------------------
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -73,10 +79,10 @@ fun BuscarPlagaScreen(
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0xFF063850), // azul intermedio
-                                Color(0x99014A68), // intermedio 60%
-                                Color(0x00014365)  // transparente abajo
+                            listOf(
+                                Color(0xFF063850),
+                                Color(0x99014A68),
+                                Color(0x00014365)
                             )
                         )
                     )
@@ -85,12 +91,11 @@ fun BuscarPlagaScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 45.dp, start = 20.dp, end = 20.dp),
+                    .padding(top = 40.dp, start = 20.dp, end = 20.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
 
-                // Flecha opcional
                 if (showBackButton) {
                     Image(
                         painter = painterResource(id = R.drawable.flecha),
@@ -101,7 +106,7 @@ fun BuscarPlagaScreen(
                             .clickable { navController.popBackStack() }
                     )
                 } else {
-                    Box(modifier = Modifier.size(36.dp)) // Mantener espacio
+                    Box(modifier = Modifier.size(36.dp))
                 }
 
                 Image(
@@ -113,131 +118,120 @@ fun BuscarPlagaScreen(
                 Box(modifier = Modifier.size(36.dp))
             }
         }
-        //contenido
-        //contenido
-        Column(
+
+        // ------------------ LISTA ------------------
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.White)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .offset(y = (-60).dp)
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(bottom = 20.dp)
         ) {
 
-            // Título
-            Text(
-                text = "Búsqueda por Síntomas",
-                fontSize = 20.sp,
-                color = Color.Black,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
             // Barra de búsqueda
-            OutlinedTextField(
-                value = inputText,
-                onValueChange = { inputText = it },
-                leadingIcon = {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_lupa),
-                        contentDescription = null
-                    )
-                },
-                placeholder = { Text("Describe los síntomas que ves...") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-            )
+            item {
+                PlagasSearchBar(
+                    text = search,
+                    onTextChange = { search = it }
+                )
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Chips de síntomas comunes
-            Text("Síntomas Comunes", fontSize = 18.sp)
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            val sintomas = listOf(
-                "Manchas amarillas en hojas",
-                "Hojas marchitas",
-                "Puntos negros",
-                "Hojas enrolladas",
-                "Agujeros en hojas",
-                "Polvo blanco",
-                "Hojas caídas",
-                "Tallos blandos"
-            )
-
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                sintomas.forEach { sintoma ->
-                    AssistChip(
-                        onClick = { inputText = TextFieldValue(sintoma) },
-                        label = { Text(sintoma, fontSize = 13.sp) }
-                    )
-                }
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            // Si el texto está vacío → no mostrar nada
+            if (search.isNotEmpty()) {
 
-            // Cuadro verde con lupa
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .background(Color(0xFFE8F9EF), shape = MaterialTheme.shapes.medium)
-                    .padding(vertical = 40.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                val filteredList = plagasMap.values.filter {
 
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_lupa),
-                        contentDescription = null,
-                        tint = Color(0xFF2E7D32),
-                        modifier = Modifier.size(48.dp)
+                    // Busca en nombre, alias y síntomas
+                    it.nombre.contains(search, ignoreCase = true) ||
+                            it.alias.any { alias -> alias.contains(search, ignoreCase = true) } ||
+                            it.sintomas.contains(search, ignoreCase = true)
+                }
+
+                items(filteredList) { plaga ->
+                    PlagaCardSintomas(plaga)
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------
+// CARD DE PLAGA
+// -----------------------------------------------------------
+
+@Composable
+fun PlagaCardSintomas(plaga: PlagaInfo) {
+    var expanded by remember { mutableStateOf(false) }
+
+    val gradient = Brush.verticalGradient(
+        listOf(Color(0xFF1976D2), Color(0xFF002E4A))
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF7F7F7)),
+        elevation = CardDefaults.cardElevation(4.dp)
+    ) {
+
+        Column(modifier = Modifier.padding(16.dp)) {
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+
+                Image(
+                    painter = painterResource(id = plaga.imagenRes),
+                    contentDescription = plaga.nombre,
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .padding(end = 12.dp)
+                )
+
+                Column(modifier = Modifier.weight(1f)) {
+
+                    Text(
+                        plaga.nombre,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text("Describe lo que observas", fontSize = 18.sp, color = Color.Black)
                     Text(
-                        "Escribe los síntomas o selecciona uno de los más comunes",
-                        fontSize = 14.sp,
+                        plaga.alias.joinToString(", "),
+                        style = MaterialTheme.typography.bodySmall,
                         color = Color.Gray
                     )
                 }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(gradient)
+                        .clickable { expanded = !expanded }
+                        .padding(horizontal = 18.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = if (expanded) "Ver menos" else "Ver más",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(30.dp))
+            if (expanded) {
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // Botón Buscar que activa el modelo
-            Button(
-                onClick = {
-                    if (inputText.text.isNotBlank()) {
-                        isLoading = true
-                        val jsonResult = runModelText(navController.context, inputText.text)
+                Text("Descripción: ${plaga.descripcion}")
+                Spacer(modifier = Modifier.height(6.dp))
 
-                        Handler(Looper.getMainLooper()).post {
-                            navController.currentBackStackEntry?.savedStateHandle?.set(
-                                "plagaInfo",
-                                jsonResult
-                            )
-                            navController.navigate("result")
-                            isLoading = false
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().height(56.dp)
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp)
-                } else {
-                    Text("Buscar", fontSize = 16.sp)
-                }
+                Text("Síntomas: ${plaga.sintomas}")
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text("Control: ${plaga.control}")
             }
         }
     }

@@ -3,7 +3,9 @@
 package com.example.cuidacultivo.ui.screens
 
 import android.Manifest
+import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -11,22 +13,18 @@ import android.view.Surface
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.ImageCapture
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.*
+import androidx.compose.ui.draw.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -37,116 +35,161 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.navigation.NavHostController
 import com.example.cuidacultivo.R
-import com.example.cuidacultivo.ui.components.*
+import com.example.cuidacultivo.data.saveHistorial
 import com.example.cuidacultivo.tflite.runModel
+import com.example.cuidacultivo.ui.components.*
 import com.example.cuidacultivo.utils.uriToBitmap
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
+import org.json.JSONObject
+import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 
+// ------------------------------------------------------------
+// Captura imagen
+// ------------------------------------------------------------
+fun captureImage(
+    imageCapture: ImageCapture,
+    executor: java.util.concurrent.Executor,
+    context: Context,
+    onImageCaptured: (Bitmap) -> Unit
+) {
+    imageCapture.takePicture(
+        executor,
+        object : ImageCapture.OnImageCapturedCallback() {
+            override fun onCaptureSuccess(image: ImageProxy) {
+                val buffer: ByteBuffer = image.planes[0].buffer
+                val bytes = ByteArray(buffer.remaining())
+                buffer.get(bytes)
+                image.close()
+
+                onImageCaptured(
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                )
+            }
+
+            override fun onError(exception: ImageCaptureException) {
+                exception.printStackTrace()
+            }
+        }
+    )
+}
+
+// ------------------------------------------------------------
+// HOME SCREEN
+// ------------------------------------------------------------
 @Composable
 fun HomeScreen(navController: NavHostController) {
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // --- PERMISO DE CÁMARA ---
-    var tienePermiso by remember { mutableStateOf(false) }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted -> tienePermiso = granted }
-
-    LaunchedEffect(Unit) { permissionLauncher.launch(Manifest.permission.CAMERA) }
-
-    // --- ESTADOS ---
     var switchState by remember { mutableStateOf(false) }
+    var tienePermiso by remember { mutableStateOf(false) }
     var isFocused by remember { mutableStateOf(false) }
-    var flashEnabled by remember { mutableStateOf(false) }
     var pulseEffect by remember { mutableStateOf(false) }
 
-    // --- ImageCapture ---
+    val permissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+            tienePermiso = it
+        }
+
+    LaunchedEffect(Unit) {
+        permissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+
+    // Animaciones
+    val scale by animateFloatAsState(if (isFocused) 4f else 1f)
+    val offsetY by animateDpAsState(if (isFocused) (-50).dp else 0.dp)
+    val pulseScale by animateFloatAsState(if (pulseEffect) 1.15f else 1f)
+    val blur by animateDpAsState(if (isFocused) 0.dp else 6.dp)
+    val overlayAlpha by animateFloatAsState(if (isFocused) 0.3f else 0.5f)
+
     val imageCapture = remember {
         ImageCapture.Builder()
             .setTargetRotation(Surface.ROTATION_0)
             .build()
     }
 
-    // --- Convertir a ARGB8888 ---
-    fun convertToARGB8888(bitmap: Bitmap): Bitmap {
-        return try {
-            if (!bitmap.isMutable) bitmap.copy(Bitmap.Config.ARGB_8888, true) else bitmap
-        } catch (e: Exception) {
-            val converted = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-            val canvas = android.graphics.Canvas(converted)
-            canvas.drawBitmap(bitmap, 0f, 0f, null)
-            converted
-        }
-    }
+    fun convertToARGB8888(bitmap: Bitmap): Bitmap =
+        if (bitmap.isMutable) bitmap else bitmap.copy(Bitmap.Config.ARGB_8888, true)
 
-    // --- GALERÍA → RESULTSCREEN ---
-    val galleryLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let {
-            val bitmap = uriToBitmap(context, it)
-            bitmap?.let { bmp ->
-                val safeBitmap = convertToARGB8888(bmp)
-                val jsonString = runModel(context, safeBitmap)
+    // ------------------------------------------------------------
+    // PROCESAR IMAGEN + GUARDAR HISTORIAL (FONDO)
+    // ------------------------------------------------------------
+    fun processBitmap(bitmap: Bitmap, metodo: String) {
+        scope.launch(Dispatchers.IO) {
 
-                Handler(Looper.getMainLooper()).post {
-                    navController.currentBackStackEntry?.savedStateHandle?.set(
-                        "plagaInfo",
-                        jsonString
-                    )
-                    navController.navigate("result")
-                }
+            val safeBitmap = convertToARGB8888(bitmap)
+            val jsonString = runModel(context, safeBitmap)
+
+            val json = JSONObject(jsonString)
+            val plaga = json.optString("nombre", "Desconocida")
+            val porcentaje = json.optDouble("probabilidad", 0.0)
+
+            // ✅ GUARDA HISTORIAL EN SEGUNDO PLANO
+            saveHistorial(
+                context = context,
+                plaga = plaga,
+                metodo = metodo,
+                porcentaje = porcentaje,
+                bitmap = safeBitmap
+            )
+
+            withContext(Dispatchers.Main) {
+                navController.currentBackStackEntry
+                    ?.savedStateHandle
+                    ?.set("plagaInfo", jsonString)
+
+                navController.navigate("result")
             }
         }
     }
 
+    // ------------------------------------------------------------
+    // GALERÍA
+    // ------------------------------------------------------------
+    val galleryLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+            uri ?: return@rememberLauncherForActivityResult
+            val bmp = uriToBitmap(context, uri) ?: return@rememberLauncherForActivityResult
+            processBitmap(bmp, "galería")
+        }
 
-    // --- ANIMACIONES ---
-    val scale by animateFloatAsState(if (isFocused) 4f else 1f, tween(600))
-    val innerBlur by animateDpAsState(if (isFocused) 0.dp else 6.dp, tween(600))
-    val overlayAlpha by animateFloatAsState(if (isFocused) 0.3f else 0.5f, tween(500))
-    val verticalOffset by animateDpAsState(if (isFocused) (-50).dp else 0.dp, tween(600))
-    val pulseScale by animateFloatAsState(if (pulseEffect) 1.15f else 1f, tween(250))
-
-    // --- FUNCIÓN TOMAR FOTO Y PREDECIR ---
+    // ------------------------------------------------------------
+    // CÁMARA
+    // ------------------------------------------------------------
     fun takePhotoAndPredict() {
+
         if (!isFocused) {
             pulseEffect = true
             scope.launch {
-                delay(300)
+                delay(250)
                 pulseEffect = false
             }
             return
         }
 
-        val executor = Executors.newSingleThreadExecutor()
-
         captureImage(
             imageCapture = imageCapture,
-            executor = executor,
-            onImageCaptured = { bitmap ->
-                val safeBitmap = convertToARGB8888(bitmap)
-                val jsonString = runModel(context, safeBitmap)
-
-                Handler(Looper.getMainLooper()).post {
-                    navController.currentBackStackEntry?.savedStateHandle?.set(
-                        "plagaInfo",
-                        jsonString
-                    )
-                    navController.navigate("result")
-                }
-            },
+            executor = Executors.newSingleThreadExecutor(),
             context = context
-        )
+        ) { bitmap ->
+            processBitmap(bitmap, "cámara")
+        }
     }
 
+    // ------------------------------------------------------------
+    // UI (TU DISEÑO SE MANTIENE)
+    // ------------------------------------------------------------
+    Box(Modifier.fillMaxSize()) {
 
-    // --- UI ---
-    Box(modifier = Modifier.fillMaxSize()) {
+        if (tienePermiso) {
+            CameraPreview(
+                enableFlash = false,
+                imageCapture = imageCapture,
+                modifier = Modifier.fillMaxSize().blur(blur)
+            )
+        }
 
         GradientBlock(
             switchState = switchState,
@@ -155,23 +198,6 @@ fun HomeScreen(navController: NavHostController) {
             modifier = Modifier.align(Alignment.TopCenter).zIndex(2f)
         )
 
-        if (tienePermiso) {
-            CameraPreview(
-                enableFlash = flashEnabled,
-                imageCapture = imageCapture,
-                modifier = Modifier
-                    .matchParentSize()
-                    .clip(RoundedCornerShape(24.dp))
-                    .blur(innerBlur)
-                    .zIndex(1f)
-            )
-        } else {
-            Box(
-                Modifier.fillMaxSize().background(Color.Gray),
-                contentAlignment = Alignment.Center
-            ) { Text("Permiso de cámara requerido") }
-        }
-
         Box(
             Modifier.fillMaxSize().background(Color.Black.copy(alpha = overlayAlpha)).zIndex(2f)
         )
@@ -179,25 +205,22 @@ fun HomeScreen(navController: NavHostController) {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                Surface(color = Color.Transparent) {
-                    TopBarMenu(
-                        navController = navController,
-                        switchState = switchState,
-                        onSwitchChange = { switchState = it }
-                    )
-                }
+                TopBarMenu(
+                    navController = navController,
+                    switchState = switchState,
+                    onSwitchChange = { switchState = it }
+                )
             },
             bottomBar = {
                 ButtonSearchSection(
                     onGalleryClick = { galleryLauncher.launch("image/*") },
                     onCameraClick = { takePhotoAndPredict() },
-                    onSearchClick = {
-                        navController.navigate("buscarPlaga")
-                    }
+                    onSearchClick = { navController.navigate("buscarPlaga") }
                 )
             },
             modifier = Modifier.zIndex(3f)
         ) { padding ->
+
             Column(
                 Modifier
                     .fillMaxSize()
@@ -220,15 +243,19 @@ fun HomeScreen(navController: NavHostController) {
         }
 
         Box(
-            Modifier.fillMaxSize().zIndex(4f)
+            Modifier
+                .fillMaxSize()
+                .zIndex(4f)
         ) {
             Box(
                 Modifier
                     .align(Alignment.Center)
-                    .offset(y = verticalOffset)
+                    .offset(y = offsetY)
                     .size(80.dp, 120.dp)
                     .scale(scale * pulseScale)
-                    .pointerInput(Unit) { detectTapGestures { isFocused = !isFocused } }
+                    .pointerInput(Unit) {
+                        detectTapGestures { isFocused = !isFocused }
+                    }
             ) {
                 Image(
                     painter = painterResource(id = R.drawable.enfoque),

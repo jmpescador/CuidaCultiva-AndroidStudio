@@ -252,10 +252,7 @@ fun PlagasSearchBar(
         contentAlignment = Alignment.CenterStart
     ) {
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxSize()
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
 
             Icon(
                 painter = painterResource(id = R.drawable.ic_lupa),

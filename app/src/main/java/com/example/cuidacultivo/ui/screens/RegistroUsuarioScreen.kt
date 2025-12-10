@@ -37,6 +37,7 @@ import com.example.cuidacultivo.ui.components.menu.LayoutMenu
 fun RegistroUsuarioScreen(
     onRegister: (String, String, String, String, Uri?) -> Unit
 ) {
+
     val context = LocalContext.current
 
     var nombre by remember { mutableStateOf("") }

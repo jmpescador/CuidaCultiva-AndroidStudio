@@ -8,7 +8,7 @@ object ApiClient {
     // Solo la IP y puerto, termina en /
 //    private const val BASE_URL = "http://10.106.43.150:5000/"
 
-    private const val BASE_URL = "http://10.42.0.1:5000/"
+    private const val BASE_URL = "http://127.0.0.1:5000/"
 
     val service: ApiService by lazy {
         Retrofit.Builder()

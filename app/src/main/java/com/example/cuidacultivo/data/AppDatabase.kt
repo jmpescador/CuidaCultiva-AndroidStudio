@@ -4,17 +4,20 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import androidx.room.TypeConverters
 
 // 🔹 Base de datos principal
 @Database(
-    entities = [Usuario::class],
-    version = 4, // ↑ Aumenta la versión cada vez que cambies la entidad
+    entities = [
+        Usuario::class,
+        HistorialConsulta::class   // ← 🔥 AGREGA ESTA TABLA
+    ],
+    version = 2, // ← AUMENTA LA VERSIÓN
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun usuarioDao(): UsuarioDao
+    abstract fun historialDao(): HistorialDao  // ← 🔥 AGREGA ESTE DAO
 
     companion object {
         @Volatile

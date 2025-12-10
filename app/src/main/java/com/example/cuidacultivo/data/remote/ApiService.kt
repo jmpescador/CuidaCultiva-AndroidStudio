@@ -26,4 +26,7 @@ interface ApiService {
         @Body usuario: Usuario
     ): Response<Usuario>
 
+    // ⭐ AÑADIR ESTE MÉTODO
+    @POST("/historial")
+    suspend fun enviarHistorial(@Body request: HistorialRequest): Response<Unit>
 }
