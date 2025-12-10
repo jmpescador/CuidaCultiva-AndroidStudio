@@ -55,7 +55,7 @@ fun MenuScreen(navController: NavController) {
             }
 
             MenuButton("Historial de consultas", R.drawable.ic_history) {
-                navController.navigate("historial")
+                navController.navigate("historialConsulta")
             }
 
             MenuButton("Consultar plagas", R.drawable.ic_bug) {
