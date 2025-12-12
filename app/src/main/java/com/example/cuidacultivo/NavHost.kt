@@ -15,7 +15,9 @@ import com.example.cuidacultivo.ui.screens.HistorialConsultaScreen
 import com.example.cuidacultivo.ui.screens.HomeScreen
 import com.example.cuidacultivo.ui.screens.MenuScreen
 import com.example.cuidacultivo.ui.screens.WikiPlagasScreen
-import com.example.tuapp.ui.screens.ResultScreen
+import com.example.cuidacultivo.ui.screens.ResultScreen
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.navigation.compose.rememberNavController
 
 object Routes {
     const val HOME = "home"
@@ -79,4 +81,11 @@ fun AppNavigation(navController: NavHostController) {
         }
 
     }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun AppNavigationPreview() {
+    val navController = rememberNavController()
+    AppNavigation(navController = navController)
 }

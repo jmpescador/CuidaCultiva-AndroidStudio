@@ -5,10 +5,7 @@ package com.example.cuidacultivo.ui.screens
 import android.Manifest
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
 import android.view.Surface
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,13 +14,14 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.*
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -41,11 +39,22 @@ import com.example.cuidacultivo.ui.components.*
 import com.example.cuidacultivo.utils.uriToBitmap
 import kotlinx.coroutines.*
 import org.json.JSONObject
-import java.nio.ByteBuffer
 import java.util.concurrent.Executors
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+
 
 // ------------------------------------------------------------
 // Captura imagen
+// ------------------------------------------------------------
+// ------------------------------------------------------------
+// Captura imagen OPTIMIZADA
 // ------------------------------------------------------------
 fun captureImage(
     imageCapture: ImageCapture,
@@ -57,14 +66,37 @@ fun captureImage(
         executor,
         object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
-                val buffer: ByteBuffer = image.planes[0].buffer
-                val bytes = ByteArray(buffer.remaining())
-                buffer.get(bytes)
-                image.close()
+                try {
+                    // 1. Convertir a Bitmap de forma eficiente
+                    val bitmap = image.toBitmap() // Función nativa de CameraX
 
-                onImageCaptured(
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                )
+                    // 2. Obtener rotación (importante en Samsung/Xiaomi)
+                    val rotationDegrees = image.imageInfo.rotationDegrees
+
+                    // 3. ¡EL SECRETO! Redimensionar AHORA a lo que pide el modelo (180x180)
+                    // Esto reduce el tamaño de memoria de 40MB a 0.1MB
+                    val scaledBitmap = Bitmap.createScaledBitmap(bitmap, 180, 180, true)
+
+                    // 4. Rotar la imagen pequeña (muy rápido)
+                    val matrix = android.graphics.Matrix().apply {
+                        postRotate(rotationDegrees.toFloat())
+                    }
+                    val finalBitmap = Bitmap.createBitmap(
+                        scaledBitmap, 0, 0, scaledBitmap.width, scaledBitmap.height, matrix, true
+                    )
+
+                    // Limpiar memoria del grande
+                    bitmap.recycle()
+
+                    // Retornar la imagen lista
+                    onImageCaptured(finalBitmap)
+
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    // SIEMPRE cerrar la imagen o la cámara se bloqueará
+                    image.close()
+                }
             }
 
             override fun onError(exception: ImageCaptureException) {
@@ -79,6 +111,10 @@ fun captureImage(
 // ------------------------------------------------------------
 @Composable
 fun HomeScreen(navController: NavHostController) {
+
+    var blockHeight by remember { mutableStateOf(0.dp) }
+    var flashEnabled by remember { mutableStateOf(false) }
+    var showFocusMessage by remember { mutableStateOf(true) }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -101,12 +137,19 @@ fun HomeScreen(navController: NavHostController) {
     val scale by animateFloatAsState(if (isFocused) 4f else 1f)
     val offsetY by animateDpAsState(if (isFocused) (-50).dp else 0.dp)
     val pulseScale by animateFloatAsState(if (pulseEffect) 1.15f else 1f)
-    val blur by animateDpAsState(if (isFocused) 0.dp else 6.dp)
+    val blur by animateDpAsState(
+        targetValue = if (isFocused) 0.dp else 12.dp,
+        animationSpec = tween(600, easing = LinearOutSlowInEasing)
+    )
     val overlayAlpha by animateFloatAsState(if (isFocused) 0.3f else 0.5f)
 
     val imageCapture = remember {
         ImageCapture.Builder()
             .setTargetRotation(Surface.ROTATION_0)
+            // NUEVO: Limitar resolución de captura (640x480 es suficiente y muy rápido)
+            .setTargetResolution(android.util.Size(640, 480))
+            // NUEVO: Priorizar velocidad sobre calidad
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
             .build()
     }
 
@@ -144,7 +187,6 @@ fun HomeScreen(navController: NavHostController) {
             }
         }
     }
-
     // ------------------------------------------------------------
     // GALERÍA
     // ------------------------------------------------------------
@@ -154,7 +196,6 @@ fun HomeScreen(navController: NavHostController) {
             val bmp = uriToBitmap(context, uri) ?: return@rememberLauncherForActivityResult
             processBitmap(bmp, "galería")
         }
-
     // ------------------------------------------------------------
     // CÁMARA
     // ------------------------------------------------------------
@@ -168,7 +209,6 @@ fun HomeScreen(navController: NavHostController) {
             }
             return
         }
-
         captureImage(
             imageCapture = imageCapture,
             executor = Executors.newSingleThreadExecutor(),
@@ -177,7 +217,6 @@ fun HomeScreen(navController: NavHostController) {
             processBitmap(bitmap, "cámara")
         }
     }
-
     // ------------------------------------------------------------
     // UI (TU DISEÑO SE MANTIENE)
     // ------------------------------------------------------------
@@ -185,7 +224,7 @@ fun HomeScreen(navController: NavHostController) {
 
         if (tienePermiso) {
             CameraPreview(
-                enableFlash = false,
+                enableFlash = flashEnabled,
                 imageCapture = imageCapture,
                 modifier = Modifier.fillMaxSize().blur(blur)
             )
@@ -257,12 +296,132 @@ fun HomeScreen(navController: NavHostController) {
                         detectTapGestures { isFocused = !isFocused }
                     }
             ) {
+                // ESQUINA SUPERIOR IZQUIERDA
                 Image(
-                    painter = painterResource(id = R.drawable.enfoque),
+                    painter = painterResource(R.drawable.esquina_superior_izquierda),
                     contentDescription = null,
-                    modifier = Modifier.matchParentSize(),
-                    contentScale = ContentScale.FillBounds
+                    modifier = Modifier
+                        .size(22.dp)
+                        .align(Alignment.TopStart)
                 )
+
+                // ESQUINA SUPERIOR DERECHA
+                Image(
+                    painter = painterResource(R.drawable.esquinas_superior_derecha),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(22.dp)
+                        .align(Alignment.TopEnd)
+                )
+
+                // ESQUINA INFERIOR IZQUIERDA
+                Image(
+                    painter = painterResource(R.drawable.esquina_inferior_izquierda),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(22.dp)
+                        .align(Alignment.BottomStart)
+                )
+
+                // ESQUINA INFERIOR DERECHA
+                Image(
+                    painter = painterResource(R.drawable.esquina_inferior_derecha),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(22.dp)
+                        .align(Alignment.BottomEnd)
+                )
+            }
+
+        }
+
+        AnimatedVisibility(
+            visible = isFocused,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 110.dp)
+                .zIndex(5f)
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(horizontal = 14.dp)
+                    .height(IntrinsicSize.Min),   // ← IGUALA ALTURA DE AMBOS BLOQUES
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+                // --- BLOQUE 1 ---
+                Surface(
+                    modifier = Modifier
+                        .wrapContentWidth()
+                        .fillMaxHeight(), // ← SE AJUSTA A LA ALTURA DEL BLOQUE MÁS ALTO
+                    color = Color.Black.copy(alpha = 0.40f),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            painter = painterResource(
+                                if (flashEnabled) R.drawable.flash_on else R.drawable.flash_off
+                            ),
+                            contentDescription = "Flash",
+                            tint = Color.White,
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clickable { flashEnabled = !flashEnabled }
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Icon(
+                            painter = painterResource(R.drawable.enfoque2),
+                            contentDescription = "Cerrar enfoque",
+                            tint = Color.White,
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clickable { isFocused = false }
+                        )
+                    }
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                // --- BLOQUE 2 ---
+                Surface(
+                    modifier = Modifier
+                        .wrapContentWidth()
+                        .fillMaxHeight(), // ← SE AJUSTA IGUAL QUE BLOQUE 1
+                    color = Color.Black.copy(alpha = 0.45f),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    AnimatedVisibility(showFocusMessage) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Text(
+                                "Enfoca bien y busca buena luz para ver mejor los síntomas.",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            Spacer(Modifier.width(8.dp))
+
+                            IconButton(
+                                onClick = { showFocusMessage = false },
+                                modifier = Modifier.size(22.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.cerrar),
+                                    contentDescription = "Cerrar",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -274,3 +433,4 @@ fun HomeScreen(navController: NavHostController) {
         )
     }
 }
+

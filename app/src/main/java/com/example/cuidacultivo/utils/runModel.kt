@@ -6,13 +6,11 @@ import android.util.Log
 import org.tensorflow.lite.Interpreter
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-
-// Importa tu mapa
 import com.example.cuidacultivo.data.plagasMap
 
 fun runModel(context: Context, bitmap: Bitmap): String {
 
-    // === Cargar modelo ===
+    // === 1. Cargar modelo e Interprete ===
     val modelBytes = context.assets.open("plagas_model.tflite").readBytes()
     val buffer = ByteBuffer.allocateDirect(modelBytes.size)
     buffer.order(ByteOrder.nativeOrder())
@@ -20,32 +18,27 @@ fun runModel(context: Context, bitmap: Bitmap): String {
 
     val tflite = Interpreter(buffer)
 
-    // === Obtener tamaño de entrada ===
+    // === 2. Preparar Entrada ===
     val inputTensor = tflite.getInputTensor(0)
-    val shape = inputTensor.shape() // [1,128,128,3]
+    val shape = inputTensor.shape()
     val inputH = shape[1]
     val inputW = shape[2]
 
-    // === Preparar imagen ===
     val resized = Bitmap.createScaledBitmap(bitmap, inputW, inputH, true)
-    val inputBuffer =
-        ByteBuffer.allocateDirect(4 * inputW * inputH * 3).order(ByteOrder.nativeOrder())
+    val inputBuffer = ByteBuffer.allocateDirect(4 * inputW * inputH * 3).order(ByteOrder.nativeOrder())
 
     for (y in 0 until inputH) {
         for (x in 0 until inputW) {
             val px = resized.getPixel(x, y)
+            // Normalización: debe coincidir EXACTAMENTE con tu Python (x / 255.0)
             inputBuffer.putFloat((px shr 16 and 0xFF) / 255f)
             inputBuffer.putFloat((px shr 8 and 0xFF) / 255f)
             inputBuffer.putFloat((px and 0xFF) / 255f)
         }
     }
 
-    // === Salida: 16 clases ===
-    val output = Array(1) { FloatArray(2) }
-    tflite.run(inputBuffer, output)
-    val probs = output[0]
-
-    // === Labels ===
+    // === 3. Ejecutar Inferencia ===
+    // IMPORTANTE: Asegúrate de que el tamaño de output coincida con la cantidad de clases (16 en tu caso)
     val labels = listOf(
         "Acaros_mora", "Antracnosis", "Antracnosis_mora", "Aranita_roja",
         "Botrytis_mora", "Broca_del_cafe", "Chinche_chamusquina", "Cochinilla_verde",
@@ -53,14 +46,45 @@ fun runModel(context: Context, bitmap: Bitmap): String {
         "Nematodos_del_cafe", "Phytophthora_mora", "Roya", "Trips_mora"
     )
 
-    // === Mejor predicción ===
+    val output = Array(1) { FloatArray(labels.size) } // Ajustado dinámicamente al tamaño de tu lista
+    tflite.run(inputBuffer, output)
+    val probs = output[0]
+
+    // === 4. Buscar la mejor predicción ===
     val maxIndex = probs.indices.maxByOrNull { probs[it] } ?: 0
     val bestLabel = labels[maxIndex]
     val bestProb = probs[maxIndex]
 
-    // === Obtener info desde plagasMap ===
+    Log.d("MODEL_DEBUG", "Predicción: $bestLabel con ${(bestProb * 100).toInt()}%")
+
+    // ========================================================================
+    // 🚨 CORRECCIÓN IMPORTANTE: UMBRAL DE CONFIANZA (THRESHOLD)
+    // ========================================================================
+    // En tu Python usaste 0.8. En móviles a veces se baja un poco a 0.6 o 0.7
+    // Si la confianza es baja, devolvemos "No Detectado"
+
+    val UMBRAL_CONFIANZA = 0.65f // 65% de seguridad mínima
+
+    if (bestProb < UMBRAL_CONFIANZA) {
+        return """
+            {
+              "id": "unknown",
+              "nombre": "No se detectó plaga",
+              "alias": "Planta sana o desconocida",
+              "probabilidad": ${bestProb * 100},
+              "descripcion": "El modelo no encontró coincidencias suficientes con las plagas entrenadas. Podría ser una hoja sana o una plaga no registrada.",
+              "sintomas": "Asegúrate de enfocar bien la hoja afectada.",
+              "control": "Intenta tomar la foto nuevamente con mejor luz."
+            }
+        """.trimIndent()
+    }
+
+    // ========================================================================
+
+    // === 5. Obtener info desde plagasMap si pasó el umbral ===
     val info = plagasMap[bestLabel]
 
+    // Fallback si la etiqueta existe en el modelo pero no escribiste info en el Map
     if (info == null) {
         return """
             {
@@ -68,8 +92,8 @@ fun runModel(context: Context, bitmap: Bitmap): String {
               "nombre": "$bestLabel",
               "alias": "",
               "probabilidad": ${bestProb * 100},
-              "descripcion": "Sin descripción.",
-              "sintomas": "Sin síntomas.",
+              "descripcion": "Información no disponible en la base de datos.",
+              "sintomas": "Consultar con un agrónomo.",
               "control": "Sin recomendaciones."
             }
         """.trimIndent()
@@ -87,47 +111,5 @@ fun runModel(context: Context, bitmap: Bitmap): String {
         }
     """.trimIndent()
 
-    Log.e("JSON_FINAL", json)
-
-    return json
-}
-
-fun runModelText(context: Context, texto: String): String {
-    val lowerText = texto.lowercase()
-
-    // Buscar coincidencia en plagasMap por nombre o alias
-    val match = plagasMap.entries.find { (_, info) ->
-        info.nombre.lowercase().contains(lowerText) ||
-                info.alias.any { alias -> alias.lowercase().contains(lowerText) }
-    }
-
-    val json = if (match != null) {
-        val info = match.value
-        """
-            {
-              "id": "${match.key}",
-              "nombre": "${info.nombre}",
-              "alias": "${info.alias.joinToString(", ")}",
-              "probabilidad": 100,
-              "descripcion": "${info.descripcion}",
-              "sintomas": "${info.sintomas}",
-              "control": "${info.control}"
-            }
-        """.trimIndent()
-    } else {
-        """
-            {
-              "id": "no_encontrado",
-              "nombre": "No encontrado",
-              "alias": "",
-              "probabilidad": 0,
-              "descripcion": "No se encontró ninguna plaga que coincida con la descripción.",
-              "sintomas": "",
-              "control": ""
-            }
-        """.trimIndent()
-    }
-
-    Log.e("JSON_TEXT", json)
     return json
 }

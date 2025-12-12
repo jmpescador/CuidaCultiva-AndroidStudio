@@ -1,4 +1,4 @@
-package com.example.tuapp.ui.screens
+package com.example.cuidacultivo.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -19,7 +19,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
@@ -32,7 +31,7 @@ fun ResultScreen(
     showBackButton: Boolean = true
 ) {
 
-    // --- Recuperar JSON pasado desde HomeScreen ---
+    // --- 1. Recuperar y procesar JSON ---
     val jsonStr = navController.previousBackStackEntry
         ?.savedStateHandle
         ?.get<String>("plagaInfo")
@@ -41,6 +40,7 @@ fun ResultScreen(
         ?: JSONObject(
             """
             {
+                "id": "unknown",
                 "nombre":"Sin datos",
                 "alias":"-",
                 "probabilidad":0,
@@ -51,6 +51,7 @@ fun ResultScreen(
             """.trimIndent()
         )
 
+    val id = json.optString("id")
     val nombre = json.optString("nombre")
     val alias = json.optString("alias")
     val probabilidad = json.optDouble("probabilidad")
@@ -58,7 +59,20 @@ fun ResultScreen(
     val sintomas = json.optString("sintomas")
     val control = json.optString("control")
 
-    // --- Forma curva del header ---
+    // --- 2. Lógica de Estado (¿Se detectó algo o no?) ---
+    // Si el ID es 'unknown' o el nombre es el mensaje de error, cambiamos el tema
+    val isUnknown = id == "unknown" || nombre == "No se detectó plaga"
+
+    // Colores dinámicos según el resultado
+    val mainColor = if (isUnknown) Color(0xFF616161) else Color(0xFF1976D2) // Gris Oscuro vs Azul
+    val secondaryColor = if (isUnknown) Color(0xFF212121) else Color(0xFF002E4A)
+
+    // El gradiente del botón y decoraciones
+    val themeGradient = Brush.verticalGradient(
+        listOf(mainColor, secondaryColor)
+    )
+
+    // --- 3. Forma curva del header ---
     val bottomMoonShape = GenericShape { size, _ ->
         moveTo(0f, 0f)
         lineTo(size.width, 0f)
@@ -70,10 +84,6 @@ fun ResultScreen(
         )
         close()
     }
-
-    val gradient = Brush.verticalGradient(
-        listOf(Color(0xFF1976D2), Color(0xFF002E4A))
-    )
 
     Column(
         modifier = Modifier
@@ -89,6 +99,7 @@ fun ResultScreen(
                 .clip(bottomMoonShape)
         ) {
 
+            // Imagen de fondo (puedes cambiarla si es error, o dejar la misma)
             Image(
                 painter = painterResource(id = R.drawable.fondo_menu),
                 contentDescription = null,
@@ -96,15 +107,15 @@ fun ResultScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
+            // Overlay de color (Aquí aplicamos el cambio de color dinámico)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                Color(0xFF063850),
-                                Color(0x99014A68),
-                                Color(0x00014365)
+                                mainColor.copy(alpha = 0.8f),
+                                secondaryColor.copy(alpha = 0.9f)
                             )
                         )
                     )
@@ -157,7 +168,7 @@ fun ResultScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
 
-                // --- TARJETA PRINCIPAL ---
+                // --- TARJETA PRINCIPAL (RESULTADO) ---
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -167,19 +178,27 @@ fun ResultScreen(
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
 
+                        // Nombre de la plaga
                         Text(
                             text = nombre,
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
+                            color = if (isUnknown) Color.Red.copy(alpha = 0.7f) else Color.Black,
                             modifier = Modifier.fillMaxWidth()
                         )
 
-                        Text(text = "Alias: $alias", fontSize = 16.sp)
+                        // Alias (Solo si existe)
+                        if (alias.isNotEmpty() && alias != "-") {
+                            Text(text = "Alias: $alias", fontSize = 16.sp, color = Color.DarkGray)
+                        }
 
+                        // Probabilidad
                         Text(
-                            text = "Probabilidad: ${String.format("%.2f", probabilidad)}%",
-                            fontSize = 16.sp
+                            text = "Confianza: ${String.format("%.1f", probabilidad)}%",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (probabilidad > 80) Color(0xFF2E7D32) else Color.Gray // Verde si es alto
                         )
                     }
                 }
@@ -195,14 +214,25 @@ fun ResultScreen(
 
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
 
-                        Text("Descripción:", fontWeight = FontWeight.Bold)
-                        Text(descripcion)
+                        if (isUnknown) {
+                            // Mensaje especial si no se detectó nada
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("⚠️ ", fontSize = 18.sp)
+                                Text("Recomendación:", fontWeight = FontWeight.Bold)
+                            }
+                            Text(descripcion) // Aquí vendrá el texto de "Intenta tomar la foto..."
 
-                        Text("Síntomas:", fontWeight = FontWeight.Bold)
-                        Text(sintomas)
+                        } else {
+                            // Información normal de la plaga
+                            Text("Descripción:", fontWeight = FontWeight.Bold, color = mainColor)
+                            Text(descripcion)
 
-                        Text("Control:", fontWeight = FontWeight.Bold)
-                        Text(control)
+                            Text("Síntomas:", fontWeight = FontWeight.Bold, color = mainColor)
+                            Text(sintomas)
+
+                            Text("Control:", fontWeight = FontWeight.Bold, color = mainColor)
+                            Text(control)
+                        }
                     }
                 }
 
@@ -212,12 +242,19 @@ fun ResultScreen(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(16.dp))
-                        .background(gradient)
+                        .background(themeGradient) // Usa el color dinámico (Gris o Azul)
                         .clickable { navController.popBackStack() }
                         .padding(vertical = 12.dp, horizontal = 24.dp)
                 ) {
-                    Text("Tomar otra foto", color = Color.White, fontSize = 16.sp)
+                    Text(
+                        text = if (isUnknown) "Intentar de nuevo" else "Tomar otra foto",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
+
+                Spacer(modifier = Modifier.height(20.dp))
             }
         }
     }
