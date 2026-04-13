@@ -18,6 +18,7 @@ import com.example.cuidacultivo.ui.screens.WikiPlagasScreen
 import com.example.cuidacultivo.ui.screens.ResultScreen
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.compose.rememberNavController
+import com.example.cuidacultivo.ui.screens.AyudaScreen
 
 object Routes {
     const val HOME = "home"
@@ -28,6 +29,8 @@ object Routes {
 
     const val WIKI_PLAGAS = "wikiPlagas"
     const val HISTORIAL_CONSULTA = "historialConsulta"
+
+    const val AYUDA = "ayuda"
 }
 
 @Composable
@@ -78,6 +81,10 @@ fun AppNavigation(navController: NavHostController) {
                 context = context, // <-- importante
                 showBackButton = true
             )
+        }
+
+        composable(Routes.AYUDA) {
+            AyudaScreen(navController)
         }
 
     }

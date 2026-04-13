@@ -62,12 +62,12 @@ fun MenuScreen(navController: NavController) {
                 navController.navigate("wikiPlagas")
             }
 
-            MenuButton("Agregar cultivo", R.drawable.ic_add_cultivo) {
-                navController.navigate("agregarCultivo")
-            }
+//            MenuButton("Agregar cultivo", R.drawable.ic_add_cultivo) {
+//                navController.navigate("agregarCultivo")
+//            }
 
             MenuButton("Centro de ayuda", R.drawable.ic_help) {
-                navController.navigate("centroAyuda")
+                navController.navigate("ayuda")
             }
         }
     }

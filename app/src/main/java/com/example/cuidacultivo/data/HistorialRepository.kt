@@ -6,21 +6,15 @@ import android.graphics.BitmapFactory
 import android.util.Log
 import com.example.cuidacultivo.data.remote.ApiClient
 import com.example.cuidacultivo.data.remote.HistorialRequest
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 import com.example.cuidacultivo.utils.toBase64
 
-
 // -----------------------------------------------------
-// Singleton para proveer la base de datos (Room)
+// Singleton DB
 // -----------------------------------------------------
 object DatabaseProvider {
     lateinit var db: AppDatabase
@@ -33,6 +27,9 @@ class HistorialRepository(
     private val context: Context,
     private val dao: HistorialDao = DatabaseProvider.db.historialDao()
 ) {
+
+    // 🔥 API con interceptor (TOKEN)
+    private val api = ApiClient.getService(context)
 
     // -------------------------------
     // Guardar imagen como archivo
@@ -51,7 +48,7 @@ class HistorialRepository(
     }
 
     // -------------------------------------------------
-    // Guardar historial local (Room)
+    // Guardar historial local
     // -------------------------------------------------
     suspend fun guardarHistorialLocal(
         usuarioCedula: String,
@@ -60,10 +57,6 @@ class HistorialRepository(
         porcentaje: Double,
         bitmap: Bitmap
     ) = withContext(Dispatchers.IO) {
-
-        Log.d("HIST_LOCAL", "➡️ Guardando historial local")
-        Log.d("HIST_LOCAL", "Usuario: $usuarioCedula")
-        Log.d("HIST_LOCAL", "Plaga: $plagaDetectada")
 
         val imagePath = guardarImagen(bitmap)
 
@@ -79,26 +72,20 @@ class HistorialRepository(
         )
 
         dao.insertar(historial)
-        Log.d("HIST_LOCAL", "✅ Historial guardado en Room")
+        Log.d("HIST_LOCAL", "✅ Guardado local")
     }
 
     // -------------------------------------------------
-    // Sincronizar historial pendiente con backend
+    // 🔥 SINCRONIZAR CON BACKEND
     // -------------------------------------------------
     suspend fun sincronizarHistorial() = withContext(Dispatchers.IO) {
 
         try {
-            Log.d("HIST_SYNC", "🔄 Iniciando sincronización")
-
             val pendientes = dao.getPendientes()
-            Log.d("HIST_SYNC", "Pendientes: ${pendientes.size}")
-
             val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
 
             for (item in pendientes) {
-                Log.d("HIST_SYNC", "➡️ Enviando ID: ${item.id}")
 
-                // Convertir imagen a Base64 SOLO aquí
                 val bitmap = BitmapFactory.decodeFile(item.imagenPath)
                 val imagenBase64 = bitmap.toBase64()
 
@@ -112,26 +99,26 @@ class HistorialRepository(
                 )
 
                 val response = withTimeout(10_000) {
-                    ApiClient.service.enviarHistorial(request)
+                    api.enviarHistorial(request) // 🔥 CAMBIO CLAVE
                 }
 
-                Log.d("HIST_SYNC", "✅ HTTP ${response.code()}")
+                Log.d("HIST_SYNC", "HTTP ${response.code()}")
 
                 if (response.isSuccessful) {
                     dao.actualizar(item.copy(enviado = 1))
-                    Log.d("HIST_SYNC", "✅ Marcado como enviado")
+                    Log.d("HIST_SYNC", "✅ Enviado")
                 }
             }
 
         } catch (e: TimeoutCancellationException) {
-            Log.e("HIST_SYNC", "⏱️ Timeout: backend no responde")
+            Log.e("HIST_SYNC", "⏱ Timeout")
         } catch (e: Exception) {
-            Log.e("HIST_SYNC", "🔥 Error sincronizando historial", e)
+            Log.e("HIST_SYNC", "🔥 Error", e)
         }
     }
 
     // -------------------------------------------------
-    // Obtener historial local
+    // Obtener historial
     // -------------------------------------------------
     suspend fun obtenerHistorial(): List<HistorialConsulta> =
         withContext(Dispatchers.IO) {
@@ -140,7 +127,7 @@ class HistorialRepository(
 }
 
 // -----------------------------------------------------
-// Helper único para guardar historial desde UI
+// Helper desde UI
 // -----------------------------------------------------
 fun saveHistorial(
     context: Context,

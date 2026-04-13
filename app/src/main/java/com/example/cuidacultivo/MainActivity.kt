@@ -20,6 +20,7 @@ import com.example.cuidacultivo.data.Usuario
 import com.example.cuidacultivo.ui.navigation.AppNavigation
 import com.example.cuidacultivo.ui.screens.RegistroUsuarioScreen
 import com.example.cuidacultivo.ui.theme.CuidaCultivoTheme
+import com.example.cuidacultivo.ui.screens.PasswordScreen
 import com.example.cuidacultivo.utils.uriToBase64
 import kotlinx.coroutines.*
 
@@ -38,12 +39,18 @@ class MainActivity : ComponentActivity() {
 
             var usuarioRegistrado by remember { mutableStateOf<Boolean?>(null) }
 
+            var accesoValidado by remember { mutableStateOf<Boolean?>(null) }
+
             // ============================================================
             // ⭐ CARGA INICIAL → LEER ROOM y SINCRONIZAR CON BACKEND
             // ============================================================
             LaunchedEffect(Unit) {
                 val user = withContext(Dispatchers.IO) { repo.obtenerUsuarioLocal() }
                 usuarioRegistrado = user != null
+
+                val prefs = context.getSharedPreferences("app", Context.MODE_PRIVATE)
+                val acceso = prefs.getBoolean("acceso_validado", false)
+                accesoValidado = acceso
 
                 if (user != null && tieneInternet(context)) {
                     try {
@@ -57,12 +64,10 @@ class MainActivity : ComponentActivity() {
 
             CuidaCultivoTheme {
 
-                when (usuarioRegistrado) {
+                when {
 
-                    // -----------------------------------------------------------
-                    // ⭐ MOSTRAR LOADING MIENTRAS CARGA ROOM
-                    // -----------------------------------------------------------
-                    null -> {
+                    // ⏳ LOADING
+                    usuarioRegistrado == null || accesoValidado == null -> {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
@@ -71,60 +76,89 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // -----------------------------------------------------------
-                    // ⭐ NO HAY USUARIO → MOSTRAR REGISTRO
-                    // -----------------------------------------------------------
-                    false -> {
+                    // 👤 NO REGISTRADO → REGISTRO
+                    usuarioRegistrado == false -> {
                         RegistroUsuarioScreen { nombre, telefono, cedula, direccion, fotoUri ->
 
-                            val base64Foto = uriToBase64(context, fotoUri)
-                            val usuario = Usuario(
-                                id = 0,
-                                nombre = nombre,
-                                telefono = telefono,
-                                cedula = cedula,
-                                direccion = direccion,
-                                foto = base64Foto,
-                                enviado = 0
-                            )
-
-                            Log.d("REGISTRO", "📝 Iniciando registro de usuario: $usuario")
-
                             scope.launch(Dispatchers.IO) {
-                                try {
-                                    Log.d("REGISTRO", "💾 Guardando usuario localmente...")
-                                    repo.guardarLocal(usuario)
-                                    Log.d("REGISTRO", "✔ Usuario guardado en Room")
-                                } catch (e: Exception) {
-                                    Log.e("REGISTRO", "❌ Error guardando en Room: ${e.message}")
+
+                                // 🔍 VALIDAR CÉDULA PRIMERO
+                                val existe = if (tieneInternet(context)) {
+                                    repo.existeCedula(cedula)
+                                } else {
+                                    false // si no hay internet, dejamos registrar
                                 }
+
+                                if (existe) {
+                                    withContext(Dispatchers.Main) {
+                                        android.widget.Toast
+                                            .makeText(context, "La cédula ya está registrada", android.widget.Toast.LENGTH_SHORT)
+                                            .show()
+                                    }
+                                    return@launch
+                                }
+
+                                // 📸 convertir imagen
+                                val base64Foto = uriToBase64(context, fotoUri)
+
+                                val usuario = Usuario(
+                                    id = 0,
+                                    nombre = nombre,
+                                    telefono = telefono,
+                                    cedula = cedula,
+                                    direccion = direccion,
+                                    foto = base64Foto,
+                                    enviado = 0
+                                )
+
+                                // 💾 guardar local
+                                repo.guardarLocal(usuario)
 
                                 withContext(Dispatchers.Main) {
-                                    Log.d("REGISTRO", "➡ Pasando al home")
-                                    usuarioRegistrado = true  // Ir al home inmediatamente
+                                    usuarioRegistrado = true
                                 }
 
+                                // 🔄 sincronizar si hay internet
                                 if (tieneInternet(context)) {
-                                    try {
-                                        Log.d("REGISTRO", "🌐 Hay internet → sincronizando con backend...")
-                                        repo.sincronizarPendiente()
-                                        Log.d("REGISTRO", "✔ Sincronización con backend finalizada")
-                                    } catch (e: Exception) {
-                                        Log.e("REGISTRO", "❌ Error sincronizando con backend: ${e.message}")
-                                    }
-                                } else {
-                                    Log.d("REGISTRO", "⚠ No hay internet → sincronización pendiente")
+                                    repo.sincronizarPendiente()
                                 }
                             }
                         }
-
-
                     }
 
-                    // -----------------------------------------------------------
-                    // ⭐ USUARIO YA EXISTE → IR A LA APP
-                    // -----------------------------------------------------------
-                    true -> {
+                    // 🔐 REGISTRADO PERO SIN PASSWORD
+                    accesoValidado == false -> {
+                        PasswordScreen { passwordIngresada ->
+
+                            try {
+                                val response = repo.validarPassword(passwordIngresada)
+
+                                if (response.exito) {
+
+                                    val prefs = context.getSharedPreferences("app", Context.MODE_PRIVATE)
+                                    prefs.edit()
+                                        .putBoolean("acceso_validado", true)
+                                        .putString("token", response.token)
+                                        .apply()
+
+                                    accesoValidado = true
+
+                                    true // ✅ IMPORTANTE: retorna true
+
+                                } else {
+                                    Log.e("LOGIN", "❌ Password incorrecta")
+                                    false // ❌ retorna false
+                                }
+
+                            } catch (e: Exception) {
+                                Log.e("LOGIN", "❌ Error: ${e.message}")
+                                false // ❌ error también retorna false
+                            }
+                        }
+                    }
+
+                    // ✅ TODO OK → HOME
+                    else -> {
                         val navController = rememberNavController()
                         AppNavigation(navController)
                     }

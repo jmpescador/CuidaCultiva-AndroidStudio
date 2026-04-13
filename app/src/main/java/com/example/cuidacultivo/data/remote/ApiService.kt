@@ -1,6 +1,7 @@
 package com.example.cuidacultivo.data.remote
 
 import com.example.cuidacultivo.data.Usuario
+import com.example.cuidacultivo.data.remote.LoginResponse
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -11,14 +12,16 @@ import retrofit2.http.Query
 
 interface ApiService {
 
-    @POST("/usuarios")  // Solo el endpoint relativo
+    @POST("/usuarios")
     suspend fun crearUsuario(@Body usuario: Usuario): Response<Usuario>
 
     @GET("/usuarios")
     suspend fun obtenerUsuarios(): Response<List<Usuario>>
 
     @GET("usuarios-cedula")
-    suspend fun obtenerPorCedula(@Query("cedula") cedula: String): Response<Usuario>
+    suspend fun obtenerPorCedula(
+        @Query("cedula") cedula: String
+    ): Response<Usuario>
 
     @PUT("usuario/cedula/{cedula}")
     suspend fun actualizarUsuarioPorCedula(
@@ -26,7 +29,19 @@ interface ApiService {
         @Body usuario: Usuario
     ): Response<Usuario>
 
-    // ⭐ AÑADIR ESTE MÉTODO
+    // ============================================================
+    // ⭐ HISTORIAL
+    // ============================================================
     @POST("/historial")
-    suspend fun enviarHistorial(@Body request: HistorialRequest): Response<Unit>
+    suspend fun enviarHistorial(
+        @Body request: HistorialRequest
+    ): Response<Unit>
+
+    // ============================================================
+    // 🔐 PASSWORD / TOKEN
+    // ============================================================
+    @POST("/validar-password")
+    suspend fun validarPassword(
+        @Body body: Map<String, String>
+    ): Response<LoginResponse>
 }

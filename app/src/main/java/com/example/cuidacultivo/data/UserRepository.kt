@@ -1,11 +1,13 @@
 package com.example.cuidacultivo.data
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.util.Log
 import com.example.cuidacultivo.data.remote.ApiClient
+import com.example.cuidacultivo.data.remote.LoginResponse
 
 class UserRepository(context: Context) {
+
+    private val api = ApiClient.getService(context)
 
     private val db = AppDatabase.getDatabase(context)
     private val usuarioDao = db.usuarioDao()
@@ -19,11 +21,12 @@ class UserRepository(context: Context) {
         usuarioDao.insertar(usuario)
     }
 
-    suspend fun obtenerUsuarioLocal(): Usuario? = usuarioDao.obtenerUsuario()
+    suspend fun obtenerUsuarioLocal(): Usuario? =
+        usuarioDao.obtenerUsuario()
 
     suspend fun enviarAlBackend(usuario: Usuario): Usuario? {
         return try {
-            val resp = ApiClient.service.crearUsuario(usuario)
+            val resp = api.crearUsuario(usuario)
             if (resp.isSuccessful) resp.body() else null
         } catch (e: Exception) {
             Log.e("REPO", "Error enviarAlBackend(): ${e.message}")
@@ -33,7 +36,7 @@ class UserRepository(context: Context) {
 
     suspend fun actualizarRemoto(usuario: Usuario): Boolean {
         return try {
-            val resp = ApiClient.service.actualizarUsuarioPorCedula(usuario.cedula, usuario)
+            val resp = api.actualizarUsuarioPorCedula(usuario.cedula, usuario)
             resp.isSuccessful
         } catch (e: Exception) {
             Log.e("REPO", "Error actualizarRemoto(): ${e.message}")
@@ -52,13 +55,49 @@ class UserRepository(context: Context) {
     suspend fun sincronizarPendiente() {
         val user = usuarioDao.obtenerUsuario() ?: return
 
-        val existe = ApiClient.service.obtenerPorCedula(user.cedula)
+        try {
+            val existe = api.obtenerPorCedula(user.cedula)
 
-        if (existe.isSuccessful && existe.body() != null) {
-            if (actualizarRemoto(user)) marcarEnviado(user)
-        } else {
-            if (enviarAlBackend(user) != null) marcarEnviado(user)
+            if (existe.isSuccessful && existe.body() != null) {
+                if (actualizarRemoto(user)) marcarEnviado(user)
+            } else {
+                if (enviarAlBackend(user) != null) marcarEnviado(user)
+            }
+
+        } catch (e: Exception) {
+            Log.e("REPO", "Error sincronizarPendiente(): ${e.message}")
         }
     }
 
+    // ============================================================
+    // 🔐 PASSWORD / TOKEN
+    // ============================================================
+
+    suspend fun validarPassword(password: String): LoginResponse {
+        return try {
+            val resp = api.validarPassword(mapOf("password" to password))
+
+            if (resp.isSuccessful && resp.body() != null) {
+                resp.body()!!
+            } else {
+                LoginResponse(false, "")
+            }
+
+        } catch (e: Exception) {
+            Log.e("REPO", "Error validarPassword(): ${e.message}")
+            LoginResponse(false, "")
+        }
+    }
+
+    suspend fun existeCedula(cedula: String): Boolean {
+        return try {
+            val resp = api.obtenerPorCedula(cedula)
+
+            resp.isSuccessful && resp.body() != null
+
+        } catch (e: Exception) {
+            Log.e("REPO", "Error existeCedula(): ${e.message}")
+            false
+        }
+    }
 }
