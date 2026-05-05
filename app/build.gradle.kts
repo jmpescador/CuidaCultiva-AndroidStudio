@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.cuidacultivo"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -57,7 +57,7 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")
     implementation("androidx.camera:camera-extensions:1.3.4")
-    implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    implementation("org.tensorflow:tensorflow-lite:2.15.0")
 // o la última disponible
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
     //agrega el BOM

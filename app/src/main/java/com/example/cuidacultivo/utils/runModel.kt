@@ -38,12 +38,10 @@ fun runModel(context: Context, bitmap: Bitmap): String {
     }
 
     // === 3. Ejecutar Inferencia ===
-    // IMPORTANTE: Asegúrate de que el tamaño de output coincida con la cantidad de clases (16 en tu caso)
     val labels = listOf(
-        "Acaros_mora", "Antracnosis", "Antracnosis_mora", "Aranita_roja",
-        "Botrytis_mora", "Broca_del_cafe", "Chinche_chamusquina", "Cochinilla_verde",
-        "Cochinillas_harinosas", "Escamas", "Mildeo_polvose_mora", "Minador_de_la_hoja",
-        "Nematodos_del_cafe", "Phytophthora_mora", "Roya", "Trips_mora"
+        "Broca_del_cafe",
+        "Cochinillas_harinosas",
+        "Minador_de_la_hoja"
     )
 
     val output = Array(1) { FloatArray(labels.size) } // Ajustado dinámicamente al tamaño de tu lista
