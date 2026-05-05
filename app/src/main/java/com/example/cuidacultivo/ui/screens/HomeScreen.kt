@@ -47,6 +47,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 
 
@@ -268,12 +270,22 @@ fun HomeScreen(navController: NavHostController) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 AnimatedVisibility(!isFocused) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("¡Hola!", color = Color.White, fontSize = 22.sp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         Text(
-                            "Asegúrate de que la imagen sea clara.",
+                            "¡Hola!",
+                            color = Color.White,
+                            fontSize = 22.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            "Asegúrate de que la imagen sea clara. Dale click a la pantalla para poder tomar la foto",
                             color = Color.White,
                             fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
                             modifier = Modifier.padding(top = 12.dp)
                         )
                     }
@@ -434,3 +446,12 @@ fun HomeScreen(navController: NavHostController) {
     }
 }
 
+@Preview(showBackground = true, showSystemUi = true)
+@Composable
+fun HomeScreenPreview() {
+    val navController = androidx.navigation.compose.rememberNavController()
+
+    MaterialTheme {
+        HomeScreen(navController = navController)
+    }
+}

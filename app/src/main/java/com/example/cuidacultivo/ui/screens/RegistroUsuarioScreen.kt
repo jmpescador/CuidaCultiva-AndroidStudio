@@ -60,7 +60,10 @@ fun RegistroUsuarioScreen(
     }
 
     val gradient = Brush.verticalGradient(
-        listOf(Color(0xFF1976D2), Color(0xFF002E4A))
+        colors = listOf(
+            Color(0xFF1976D2),
+            Color(0xFF002E4A)
+        )
     )
 
     LayoutMenu(navController = rememberNavController(), showBackButton = false) {
@@ -78,7 +81,7 @@ fun RegistroUsuarioScreen(
                 modifier = Modifier
                     .size(120.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                    .background(brush = gradient) // 🔥 aquí el gradiente
                     .clickable {
                         if (ContextCompat.checkSelfPermission(
                                 context,
@@ -97,10 +100,18 @@ fun RegistroUsuarioScreen(
                         painter = rememberAsyncImagePainter(imageUri),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().clip(CircleShape)
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
                     )
                 } else {
-                    Text("Seleccionar foto")
+                    Image(
+                        painter = painterResource(R.drawable.ic_usuario),
+                        contentDescription = "Foto de usuario",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize(0.7f) // 👈 imagen más pequeña
+                    )
                 }
             }
 
